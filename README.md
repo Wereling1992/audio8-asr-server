@@ -1,24 +1,25 @@
-# audio8-asr-server
+# Audio8 ASR Server
 
-A lightweight, **CPU-only** Automatic Speech Recognition service powered by [Audio8-ASR-0.1B](https://huggingface.co/Edge0/Audio8-ASR-0.1B).
+Lightweight **CPU-only** Automatic Speech Recognition service powered by [Audio8-ASR-0.1B](https://huggingface.co/Edge0/Audio8-ASR-0.1B).
 
-Built with FastAPI + ONNX Runtime. Designed for easy Docker deployment (similar in spirit to [SenseVoice-ASR-Server](https://github.com/DaDao-Labs/SenseVoice-ASR-Server)).
+Built with FastAPI + ONNX Runtime. Drop-in friendly for apps that expect an OpenAI-style transcription API.
 
-**Docker Hub:** [`wereling1992/audio8-asr-server`](https://hub.docker.com/r/wereling1992/audio8-asr-server)
+**Docker Hub:** [wereling1992/audio8-asr-server](https://hub.docker.com/r/wereling1992/audio8-asr-server)
 
 ## Features
 
-- **Simple REST API** – `POST /asr` for file upload transcription
-- **CPU-only** – no GPU required
-- **API Key authentication**
-- **Hotword boosting** at decode time
-- **Multiple precision options** – int8 (default) / int4 / fp32
-- **Docker ready** – `docker pull` + `docker run`
-- **OpenAI-compatible API** – `POST /v1/audio/transcriptions`
-- **Simple Web UI**
-- **Multilingual** – Chinese, English, Cantonese, French, German, Japanese, Korean
+- Simple REST API: `POST /asr`
+- **OpenAI-compatible**: `POST /v1/audio/transcriptions`
+- API key auth (`x-api-key` or `Authorization: Bearer`)
+- Hotword boosting (no fine-tuning)
+- Precision options: int8 (default) / int4 / fp32
+- Multilingual: Chinese, English, Cantonese, French, German, Japanese, Korean
+- Web UI at http://localhost:8000/
+- **CPU-only** — no GPU required
 
-## Quick Start (pre-built image)
+## Quick Start
+
+### Docker (recommended)
 
 ```bash
 docker run -d \
@@ -29,36 +30,30 @@ docker run -d \
   wereling1992/audio8-asr-server:latest
 ```
 
-First start downloads the ≈3 GB model into the `audio8-models` volume (only once).
+First start downloads the model (~3 GB) into the volume. Later starts reuse it.
 
-### Health check
+#### Health check
 
 ```bash
 curl http://localhost:8000/health
-# → {"status":"ok","ok":true, ...}
 ```
 
-### Transcribe
+#### Transcribe (native API)
 
 ```bash
 curl -X POST http://localhost:8000/asr \
   -H "x-api-key: MySuperSafeApiKey" \
-  -F "audio=@your.wav" \
+  -F "file=@your.wav" \
   -F "hotwords=Audio8,Edge0"
 ```
 
-Web UI: http://localhost:8000/
-
-### OpenAI-compatible API
+#### OpenAI-compatible API
 
 ```bash
-# curl
 curl -X POST http://localhost:8000/v1/audio/transcriptions \
   -H "Authorization: Bearer MySuperSafeApiKey" \
   -F "file=@your.wav" \
-  -F "model=audio8" \
-  -F "response_format=json"
-# → {"text":"..."}
+  -F "model=audio8"
 ```
 
 ```python
@@ -70,86 +65,67 @@ with open("your.wav", "rb") as f:
 print(r.text)
 ```
 
-Supported `response_format`: `json` (default), `text`, `verbose_json`.  
-Auth: `Authorization: Bearer <key>` **or** `x-api-key: <key>`.
+Web UI: http://localhost:8000/
 
-
----
-
-## Build from source (optional)
+### Docker Compose / Build from source
 
 ```bash
-cd Audio8-ASR-Server
+git clone https://github.com/Wereling1992/audio8-asr-server.git
+cd audio8-asr-server
 docker compose up -d --build
 ```
 
-Or plain Docker:
+## Environment Variables
 
-```bash
-docker build -t wereling1992/audio8-asr-server:latest .
-docker run -d -p 8000:8000 -e AUDIO8_API_KEY=MySuperSafeApiKey \
-  -v audio8-models:/models --name audio8-asr \
-  wereling1992/audio8-asr-server:latest
-```
-
----
-
-## Configuration
-
-| Environment variable | Description | Default |
-|----------------------|-------------|---------|
-| `AUDIO8_API_KEY` | API key for `x-api-key` header | `changeme` |
-| `AUDIO8_REQUIRE_API_KEY` | Enforce API key (`0`/`false` to disable) | `1` |
-| `ASR_CACHE_PRECISION` | `int8` / `int4` / `fp32` | `int8` |
-| `ASR_AUDIO_PRECISION` | `int8` / `fp32` | `int8` |
-| `ASR_BACKEND` | `auto` / `onnx_cache` / `onnx` | `auto` |
-| `ORT_PROVIDER` | ONNX Runtime provider | `CPUExecutionProvider` |
-| `PORT` | Host port mapping | `8000` |
-| `FORCE_DOWNLOAD` | Force re-download of model | `0` |
-
-## Local Development (without Docker)
-
-```bash
-git lfs install
-git clone https://huggingface.co/Edge0/Audio8-ASR-0.1B-onnx-runtime
-export AUDIO8_ASR_BUNDLE=./Audio8-ASR-0.1B-onnx-runtime/model_bundle
-export AUDIO8_API_KEY=devkey
-
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python server.py
-```
+| Variable               | Default  | Description                    |
+|------------------------|----------|--------------------------------|
+| AUDIO8_API_KEY         | changeme | API key                        |
+| AUDIO8_REQUIRE_API_KEY | 1        | Enforce API key (0 to disable) |
+| ASR_CACHE_PRECISION    | int8     | int8 / int4 / fp32             |
+| ASR_AUDIO_PRECISION    | int8     | int8 / fp32                    |
+| ASR_BACKEND            | auto     | auto / onnx_cache / onnx       |
+| FORCE_DOWNLOAD         | 0        | Force re-download model        |
+| PORT                   | 8000     | Listen port                    |
 
 ## API
 
 ### `GET /health`
+
 No auth. Returns service status.
 
 ### `POST /asr`
+
 Header: `x-api-key: <key>`
 
-| Form field | Type | Description |
-|------------|------|-------------|
-| `audio` | file | Audio file (wav/mp3/flac/ogg/m4a…) |
-| `hotwords` | string | Optional comma-separated boost terms |
-| `max_new_tokens` | int | Generation limit (default 128) |
-| `cache_precision` | string | Override: `int8` / `int4` / `fp32` |
-| `audio_precision` | string | Override: `int8` / `fp32` |
+| Form field       | Type   | Description                              |
+|------------------|--------|------------------------------------------|
+| file / audio     | file   | Audio file (wav/mp3/flac/ogg/m4a…)       |
+| hotwords         | string | Optional comma-separated boost terms     |
+| max_new_tokens   | int    | Generation limit (default 128)           |
+| cache_precision  | string | Override: int8 / int4 / fp32             |
+| audio_precision  | string | Override: int8 / fp32                    |
 
-## Resource Requirements
+### `POST /v1/audio/transcriptions`
+
+OpenAI-compatible. Auth: `Authorization: Bearer <key>` or `x-api-key: <key>`.
+
+Supported `response_format`: `json` (default), `text`, `verbose_json`.
+
+## Resource Recommendation
 
 - **RAM**: ~1.5–2.5 GB peak (int8)
-- **Disk**: ~3.5 GB for model + runtime
-- **CPU**: any x86_64 / ARM64
+- **Disk**: ~3.5 GB (model + runtime)
 - **GPU**: not required
 
-## License & Attribution
+## License
 
-- Model weights & original ONNX runtime: **CC BY-NC 4.0**  
-  © Edge0 / AutoArk-AI – https://huggingface.co/Edge0/Audio8-ASR-0.1B
-- Non-commercial use only for the model weights.
+Model weights & original ONNX runtime: **CC BY-NC 4.0** (non-commercial).
 
-## Acknowledgements
+© Edge0 / AutoArk-AI — https://huggingface.co/Edge0/Audio8-ASR-0.1B
+
+This image packages the official ONNX runtime for convenient deployment.
+
+## Credits
 
 - [Edge0 / AutoArk-AI](https://edge0.ai) for Audio8-ASR-0.1B
 - Official package: [Edge0/Audio8-ASR-0.1B-onnx-runtime](https://huggingface.co/Edge0/Audio8-ASR-0.1B-onnx-runtime)
